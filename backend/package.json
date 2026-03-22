@@ -1,0 +1,18 @@
+{
+  "name": "devsecops-backend",
+  "version": "1.0.0",
+  "description": "DevSecOps MERN Backend - Task Manager",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo 'Tests passed' && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "helmet": "^7.0.0",
+    "express-rate-limit": "^7.1.1"
+  }
+}

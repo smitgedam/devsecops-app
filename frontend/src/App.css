@@ -1,0 +1,41 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;
+  background:#0f172a;color:#e2e8f0}
+.app{max-width:800px;margin:0 auto;padding:20px}
+header{text-align:center;padding:30px 0;
+  border-bottom:1px solid #1e293b;margin-bottom:30px}
+header h1{font-size:2rem;color:#38bdf8;margin-bottom:8px}
+header p{color:#64748b;font-size:0.9rem}
+.form-section,.tasks-section{background:#1e293b;
+  border-radius:12px;padding:24px;margin-bottom:24px}
+h2{color:#94a3b8;font-size:0.85rem;
+  text-transform:uppercase;letter-spacing:0.1em;
+  margin-bottom:16px}
+input,textarea,select{width:100%;padding:10px 14px;
+  margin-bottom:12px;background:#0f172a;
+  border:1px solid #334155;border-radius:8px;
+  color:#e2e8f0;font-size:0.95rem}
+textarea{height:80px;resize:vertical}
+button[type="submit"]{width:100%;padding:12px;
+  background:#0ea5e9;color:white;border:none;
+  border-radius:8px;font-size:1rem;cursor:pointer;
+  font-weight:500}
+button[type="submit"]:hover{background:#0284c7}
+.error{background:#450a0a;color:#fca5a5;
+  padding:12px;border-radius:8px;margin-bottom:16px}
+.empty{color:#475569;text-align:center;padding:20px}
+.task{background:#0f172a;border-radius:8px;
+  padding:16px;margin-bottom:12px;display:flex;
+  justify-content:space-between;align-items:center;
+  border-left:3px solid #334155;gap:16px}
+.task.pending{border-left-color:#f59e0b}
+.task.in-progress{border-left-color:#3b82f6}
+.task.completed{border-left-color:#22c55e}
+.task-info h3{font-size:1rem;margin-bottom:4px}
+.task-info p{color:#64748b;font-size:0.875rem}
+.task-actions{display:flex;gap:8px;flex-shrink:0}
+.task-actions select{width:auto;margin:0}
+.delete{padding:8px 14px;background:#450a0a;
+  color:#fca5a5;border:none;border-radius:6px;
+  cursor:pointer;font-size:0.875rem}
+.delete:hover{background:#7f1d1d}
