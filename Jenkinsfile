@@ -21,7 +21,6 @@ pipeline {
             steps {
                 echo "=== Stage 1: Checkout ==="
                 checkout scm
-                sh 'echo "Branch: $(git branch --show-current)"'
                 sh 'echo "Commit: $(git rev-parse --short HEAD)"'
                 sh 'ls -la'
             }
@@ -30,25 +29,18 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 echo "=== Stage 2: SonarQube SAST ==="
-                script {
-                    if (fileExists('/opt/sonar-scanner/bin/sonar-scanner')) {
-                        withCredentials([string(
-                            credentialsId: 'sonarqube-token',
-                            variable: 'SONAR_TOKEN'
-                        )]) {
-                            sh '''
-                                /opt/sonar-scanner/bin/sonar-scanner \
-                                  -Dsonar.projectKey=devsecops-app \
-                                  -Dsonar.projectName="DevSecOps App" \
-                                  -Dsonar.sources=backend,frontend/src \
-                                  -Dsonar.host.url=${SONAR_HOST} \
-                                  -Dsonar.login=${SONAR_TOKEN}
-                            '''
-                        }
-                    } else {
-                        echo "SonarQube scanner not installed — skipping"
-                        echo "Install path: /opt/sonar-scanner"
-                    }
+                withCredentials([string(
+                    credentialsId: 'sonarqube-token',
+                    variable: 'SONAR_TOKEN'
+                )]) {
+                    sh '''
+                        /opt/sonar-scanner/bin/sonar-scanner \
+                          -Dsonar.projectKey=devsecops-app \
+                          -Dsonar.projectName="DevSecOps App" \
+                          -Dsonar.sources=backend,frontend/src \
+                          -Dsonar.host.url=${SONAR_HOST} \
+                          -Dsonar.token=${SONAR_TOKEN}
+                    '''
                 }
             }
         }
@@ -56,8 +48,14 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 echo "=== Stage 3: OWASP Dependency Scan ==="
-                script {
-                    if (fileExists('/opt/dependency-check/bin/dependency-check.sh')) {
+                catchError(
+                    buildResult: 'SUCCESS',
+                    stageResult: 'UNSTABLE'
+                ) {
+                    withCredentials([string(
+                        credentialsId: 'nvd-api-key',
+                        variable: 'NVD_KEY'
+                    )]) {
                         sh '''
                             mkdir -p reports/dependency-check
                             /opt/dependency-check/bin/dependency-check.sh \
@@ -67,21 +65,23 @@ pipeline {
                               --format HTML \
                               --format JSON \
                               --out ./reports/dependency-check \
-                              --failOnCVSS 9 \
-                              --enableRetired
+                              --data /opt/dependency-check/data \
+                              --nvdApiKey ${NVD_KEY} \
+                              --failOnCVSS 9
                         '''
-                        publishHTML([
-                            allowMissing: true,
-                            alwaysLinkToLastBuild: true,
-                            keepAll: true,
-                            reportDir: 'reports/dependency-check',
-                            reportFiles: 'dependency-check-report.html',
-                            reportName: 'OWASP Report'
-                        ])
-                    } else {
-                        echo "OWASP Dependency Check not installed — skipping"
-                        echo "Install path: /opt/dependency-check"
                     }
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports/dependency-check',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Report'
+                    ])
                 }
             }
         }
@@ -95,7 +95,7 @@ pipeline {
                       -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
                       -t ${BACKEND_IMAGE}:latest \
                       .
-                    echo "Backend image built: ${BACKEND_IMAGE}:${IMAGE_TAG}"
+                    echo "Built: ${BACKEND_IMAGE}:${IMAGE_TAG}"
                 '''
             }
         }
@@ -109,7 +109,7 @@ pipeline {
                       -t ${FRONTEND_IMAGE}:${IMAGE_TAG} \
                       -t ${FRONTEND_IMAGE}:latest \
                       .
-                    echo "Frontend image built: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
+                    echo "Built: ${FRONTEND_IMAGE}:${IMAGE_TAG}"
                 '''
             }
         }
@@ -117,38 +117,40 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 echo "=== Stage 6: Trivy Container Scan ==="
-                script {
-                    if (sh(script: 'which trivy', returnStatus: true) == 0) {
-                        sh '''
-                            mkdir -p reports/trivy
-                            trivy image \
-                              --exit-code 0 \
-                              --severity HIGH,CRITICAL \
-                              --format table \
-                              --output reports/trivy/backend-scan.txt \
-                              ${BACKEND_IMAGE}:${IMAGE_TAG}
-                            trivy image \
-                              --exit-code 0 \
-                              --severity HIGH,CRITICAL \
-                              --format table \
-                              --output reports/trivy/frontend-scan.txt \
-                              ${FRONTEND_IMAGE}:${IMAGE_TAG}
-                            echo "=== Backend Trivy Results ==="
-                            cat reports/trivy/backend-scan.txt
-                            echo "=== Frontend Trivy Results ==="
-                            cat reports/trivy/frontend-scan.txt
-                        '''
-                    } else {
-                        echo "Trivy not installed — skipping"
-                        echo "Install: sudo apt install trivy"
-                    }
+                catchError(
+                    buildResult: 'SUCCESS',
+                    stageResult: 'UNSTABLE'
+                ) {
+                    sh '''
+                        mkdir -p reports/trivy
+                        trivy image \
+                          --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          --format table \
+                          --output \
+                          reports/trivy/backend-scan.txt \
+                          ${BACKEND_IMAGE}:${IMAGE_TAG}
+
+                        trivy image \
+                          --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          --format table \
+                          --output \
+                          reports/trivy/frontend-scan.txt \
+                          ${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                        echo "=== Backend Trivy Results ==="
+                        cat reports/trivy/backend-scan.txt
+                        echo "=== Frontend Trivy Results ==="
+                        cat reports/trivy/frontend-scan.txt
+                    '''
                 }
             }
         }
 
         stage('Push to Docker Hub') {
             steps {
-                echo "=== Stage 7: Push Images to Docker Hub ==="
+                echo "=== Stage 7: Push to Docker Hub ==="
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-creds',
                     usernameVariable: 'DOCKER_USER',
@@ -158,11 +160,15 @@ pipeline {
                         echo ${DOCKER_PASS} | \
                           docker login -u ${DOCKER_USER} \
                           --password-stdin
-                        docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
-                        docker push ${BACKEND_IMAGE}:latest
-                        docker push ${FRONTEND_IMAGE}:${IMAGE_TAG}
-                        docker push ${FRONTEND_IMAGE}:latest
-                        echo "Images pushed successfully"
+                        docker push \
+                          ${BACKEND_IMAGE}:${IMAGE_TAG}
+                        docker push \
+                          ${BACKEND_IMAGE}:latest
+                        docker push \
+                          ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                        docker push \
+                          ${FRONTEND_IMAGE}:latest
+                        echo "Pushed: ${IMAGE_TAG}"
                     '''
                 }
             }
@@ -182,19 +188,23 @@ pipeline {
                           https://${GIT_USER}:${GIT_TOKEN}@github.com/smitgedam/devsecops-k8s.git \
                           k8s-repo
                         cd k8s-repo
-                        sed -i "s|image: smitgedam/devsecops-backend:.*|image: smitgedam/devsecops-backend:${IMAGE_TAG}|g" \
+                        sed -i \
+                          "s|image: smitgedam/devsecops-backend:.*|image: smitgedam/devsecops-backend:${IMAGE_TAG}|g" \
                           manifests/backend.yaml
-                        sed -i "s|image: smitgedam/devsecops-frontend:.*|image: smitgedam/devsecops-frontend:${IMAGE_TAG}|g" \
+                        sed -i \
+                          "s|image: smitgedam/devsecops-frontend:.*|image: smitgedam/devsecops-frontend:${IMAGE_TAG}|g" \
                           manifests/frontend.yaml
-                        git config user.email "jenkins@devsecops.local"
+                        git config user.email \
+                          "jenkins@devsecops.local"
                         git config user.name "Jenkins CI"
-                        git add manifests/backend.yaml \
-                                manifests/frontend.yaml
+                        git add \
+                          manifests/backend.yaml \
+                          manifests/frontend.yaml
                         git diff --staged --quiet || \
                           git commit -m \
                           "ci: update images to ${IMAGE_TAG} [skip ci]"
                         git push origin main
-                        echo "Manifests updated to ${IMAGE_TAG}"
+                        echo "Manifests updated: ${IMAGE_TAG}"
                     '''
                 }
             }
@@ -209,7 +219,7 @@ pipeline {
                       ${FRONTEND_IMAGE}:${IMAGE_TAG} \
                       2>/dev/null || true
                     rm -rf k8s-repo
-                    echo "Cleanup complete"
+                    echo "Cleanup done"
                 '''
             }
         }
@@ -217,10 +227,13 @@ pipeline {
 
     post {
         success {
-            echo "✓ Pipeline SUCCESS — Build ${IMAGE_TAG} complete"
+            echo "✓ Pipeline SUCCESS — ${IMAGE_TAG}"
+        }
+        unstable {
+            echo "⚠ Pipeline UNSTABLE — security warnings"
         }
         failure {
-            echo "✗ Pipeline FAILED — Check stage logs above"
+            echo "✗ Pipeline FAILED — check logs"
         }
         always {
             cleanWs()
