@@ -98,3 +98,12 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 module.exports = app;
+
+// Health check v2 — added for Phase 8 demo
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: '1.1.0',
+    environment: process.env.NODE_ENV,
+    phase: 'Phase 8 - Testing Complete'
+  });
+});
