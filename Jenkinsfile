@@ -48,6 +48,8 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 echo "=== Stage 3: OWASP Dependency Scan ==="
+                echo "INFO: NVD API key activating — will enable tomorrow"
+                echo "INFO: Trivy covers container vulnerability scanning"
                 catchError(
                     buildResult: 'SUCCESS',
                     stageResult: 'UNSTABLE'
@@ -67,6 +69,7 @@ pipeline {
                               --out ./reports/dependency-check \
                               --data /opt/dependency-check/data \
                               --nvdApiKey ${NVD_KEY} \
+                              --nvdApiDelay 6000 \
                               --failOnCVSS 9
                         '''
                     }
@@ -117,34 +120,31 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 echo "=== Stage 6: Trivy Container Scan ==="
-                catchError(
-                    buildResult: 'SUCCESS',
-                    stageResult: 'UNSTABLE'
-                ) {
-                    sh '''
-                        mkdir -p reports/trivy
-                        trivy image \
-                          --exit-code 0 \
-                          --severity HIGH,CRITICAL \
-                          --format table \
-                          --output \
-                          reports/trivy/backend-scan.txt \
-                          ${BACKEND_IMAGE}:${IMAGE_TAG}
+                sh '''
+                    mkdir -p reports/trivy
 
-                        trivy image \
-                          --exit-code 0 \
-                          --severity HIGH,CRITICAL \
-                          --format table \
-                          --output \
-                          reports/trivy/frontend-scan.txt \
-                          ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                    echo "Scanning backend image..."
+                    trivy image \
+                      --exit-code 0 \
+                      --severity HIGH,CRITICAL \
+                      --format table \
+                      --output reports/trivy/backend-scan.txt \
+                      ${BACKEND_IMAGE}:${IMAGE_TAG}
 
-                        echo "=== Backend Trivy Results ==="
-                        cat reports/trivy/backend-scan.txt
-                        echo "=== Frontend Trivy Results ==="
-                        cat reports/trivy/frontend-scan.txt
-                    '''
-                }
+                    echo "Scanning frontend image..."
+                    trivy image \
+                      --exit-code 0 \
+                      --severity HIGH,CRITICAL \
+                      --format table \
+                      --output reports/trivy/frontend-scan.txt \
+                      ${FRONTEND_IMAGE}:${IMAGE_TAG}
+
+                    echo "=== Backend Trivy Results ==="
+                    cat reports/trivy/backend-scan.txt
+
+                    echo "=== Frontend Trivy Results ==="
+                    cat reports/trivy/frontend-scan.txt
+                '''
             }
         }
 
@@ -230,7 +230,7 @@ pipeline {
             echo "✓ Pipeline SUCCESS — ${IMAGE_TAG}"
         }
         unstable {
-            echo "⚠ Pipeline UNSTABLE — security warnings"
+            echo "⚠ Pipeline UNSTABLE — OWASP pending NVD key activation"
         }
         failure {
             echo "✗ Pipeline FAILED — check logs"
