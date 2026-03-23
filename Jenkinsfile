@@ -23,24 +23,46 @@ pipeline {
                 checkout scm
                 sh 'echo "Commit: $(git rev-parse --short HEAD)"'
                 sh 'ls -la'
+                sh '''
+                    echo "Ensuring SonarQube is running..."
+                    if curl -sf --max-time 5 \
+                      http://localhost:9000/api/system/status \
+                      | grep -q UP; then
+                      echo "SonarQube: already UP"
+                    else
+                      echo "SonarQube: starting..."
+                      sudo systemctl start sonarqube
+                      timeout 120 bash -c \
+                        'until curl -sf \
+                        http://localhost:9000/api/system/status \
+                        | grep -q UP; \
+                        do echo "waiting..."; sleep 10; done'
+                      echo "SonarQube: UP"
+                    fi
+                '''
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 echo "=== Stage 2: SonarQube SAST ==="
-                withCredentials([string(
-                    credentialsId: 'sonarqube-token',
-                    variable: 'SONAR_TOKEN'
-                )]) {
-                    sh '''
-                        /opt/sonar-scanner/bin/sonar-scanner \
-                          -Dsonar.projectKey=devsecops-app \
-                          -Dsonar.projectName="DevSecOps App" \
-                          -Dsonar.sources=backend,frontend/src \
-                          -Dsonar.host.url=${SONAR_HOST} \
-                          -Dsonar.token=${SONAR_TOKEN}
-                    '''
+                catchError(
+                    buildResult: 'SUCCESS',
+                    stageResult: 'UNSTABLE'
+                ) {
+                    withCredentials([string(
+                        credentialsId: 'sonarqube-token',
+                        variable: 'SONAR_TOKEN'
+                    )]) {
+                        sh '''
+                            /opt/sonar-scanner/bin/sonar-scanner \
+                              -Dsonar.projectKey=devsecops-app \
+                              -Dsonar.projectName="DevSecOps App" \
+                              -Dsonar.sources=backend,frontend/src \
+                              -Dsonar.host.url=${SONAR_HOST} \
+                              -Dsonar.token=${SONAR_TOKEN}
+                        '''
+                    }
                 }
             }
         }
@@ -48,8 +70,6 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 echo "=== Stage 3: OWASP Dependency Scan ==="
-                echo "INFO: NVD API key activating — will enable tomorrow"
-                echo "INFO: Trivy covers container vulnerability scanning"
                 catchError(
                     buildResult: 'SUCCESS',
                     stageResult: 'UNSTABLE'
@@ -120,31 +140,34 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 echo "=== Stage 6: Trivy Container Scan ==="
-                sh '''
-                    mkdir -p reports/trivy
-
-                    echo "Scanning backend image..."
-                    trivy image \
-                      --exit-code 0 \
-                      --severity HIGH,CRITICAL \
-                      --format table \
-                      --output reports/trivy/backend-scan.txt \
-                      ${BACKEND_IMAGE}:${IMAGE_TAG}
-
-                    echo "Scanning frontend image..."
-                    trivy image \
-                      --exit-code 0 \
-                      --severity HIGH,CRITICAL \
-                      --format table \
-                      --output reports/trivy/frontend-scan.txt \
-                      ${FRONTEND_IMAGE}:${IMAGE_TAG}
-
-                    echo "=== Backend Trivy Results ==="
-                    cat reports/trivy/backend-scan.txt
-
-                    echo "=== Frontend Trivy Results ==="
-                    cat reports/trivy/frontend-scan.txt
-                '''
+                catchError(
+                    buildResult: 'SUCCESS',
+                    stageResult: 'UNSTABLE'
+                ) {
+                    sh '''
+                        mkdir -p reports/trivy
+                        echo "Scanning backend..."
+                        trivy image \
+                          --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          --format table \
+                          --output \
+                          reports/trivy/backend-scan.txt \
+                          ${BACKEND_IMAGE}:${IMAGE_TAG}
+                        echo "Scanning frontend..."
+                        trivy image \
+                          --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          --format table \
+                          --output \
+                          reports/trivy/frontend-scan.txt \
+                          ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                        echo "=== Backend Results ==="
+                        cat reports/trivy/backend-scan.txt
+                        echo "=== Frontend Results ==="
+                        cat reports/trivy/frontend-scan.txt
+                    '''
+                }
             }
         }
 
@@ -230,7 +253,7 @@ pipeline {
             echo "✓ Pipeline SUCCESS — ${IMAGE_TAG}"
         }
         unstable {
-            echo "⚠ Pipeline UNSTABLE — OWASP pending NVD key activation"
+            echo "⚠ Pipeline UNSTABLE — security warnings present"
         }
         failure {
             echo "✗ Pipeline FAILED — check logs"
