@@ -79,29 +79,7 @@ pipeline {
                         variable: 'NVD_KEY'
                     )]) {
                         sh '''
-                            echo "Installing project dependencies for accurate scan..."
-
-                            # Backend dependencies
-                            if [ -d "backend" ]; then
-                              cd backend
-                              if [ -f "package.json" ]; then
-                                npm install || echo "Backend npm install failed"
-                              fi
-                              cd ..
-                            fi
-
-                            # Frontend dependencies
-                            if [ -d "frontend" ]; then
-                              cd frontend
-                              if [ -f "package.json" ]; then
-                                npm install || echo "Frontend npm install failed"
-                              fi
-                              cd ..
-                            fi
-
-                            echo "Starting OWASP Dependency Check..."
                             mkdir -p reports/dependency-check
-
                             /opt/dependency-check/bin/dependency-check.sh \
                               --project "devsecops-app" \
                               --scan ./backend \
@@ -113,8 +91,6 @@ pipeline {
                               --nvdApiKey ${NVD_KEY} \
                               --nvdApiDelay 6000 \
                               --failOnCVSS 9
-
-                            echo "OWASP scan completed"
                         '''
                     }
                 }
