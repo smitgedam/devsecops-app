@@ -1,4 +1,4 @@
-FROM node:18-alpine3.22
+FROM node:20-alpine
 
 # ── Patch all system packages at build time ───────────────────
 RUN apk upgrade --no-cache
