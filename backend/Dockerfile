@@ -1,5 +1,9 @@
-FROM node:18-alpine
+FROM node:18-alpine3.22
 
+# ── Patch all system packages at build time ───────────────────
+RUN apk upgrade --no-cache
+
+# ── Non-root user ─────────────────────────────────────────────
 RUN addgroup -S appgroup && \
     adduser -S appuser -G appgroup
 
